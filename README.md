@@ -263,6 +263,15 @@ The joke still fits. Except this WUPHF ships.
 
 Michael: still waiting on that quarter. We are not.
 
+## Related
+
+Other open-source projects building knowledge bases the LLM way, with less paper-company energy:
+
+- [Astro-Han/karpathy-llm-wiki](https://github.com/Astro-Han/karpathy-llm-wiki) — agent-skill for Claude Code / Cursor.
+- [dimknaf/braindb](https://github.com/dimknaf/braindb) — persistent memory database + REST API for LLM agents: typed entities with explicit relations, fuzzy + semantic retrieval over a keyword graph, temporal decay, plus a watcher that auto-ingests dropped files into a self-healing wiki.
+- [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki) — Claude MCP integration.
+- [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki) — desktop app, builds wikis from documents.
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=najmuzzaman-mohammad%2Fwuphf&type=date&legend=top-left">
