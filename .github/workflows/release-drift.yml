@@ -65,7 +65,7 @@ jobs:
           # `--merged origin/main` filters out stray tags on side branches
           # so a partial release tag pushed to a feature branch doesn't
           # mask drift on the real release line.
-          git_tag=$(git tag --merged origin/main --sort=-v:refname | grep -E '^v[0-9]' | head -n1)
+          git_tag=$(git tag --merged origin/main --sort=-v:refname | awk '/^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$/ { if (n++ == 0) print }')
           if [ -z "$git_tag" ]; then
             echo "::error::no v* tags found on origin/main"
             exit 1
