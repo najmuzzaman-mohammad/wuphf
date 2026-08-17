@@ -608,15 +608,10 @@ func buildAppImprovePrompt(app CustomApp, change string) string {
 }
 
 // appWriterAllowed reports whether the request may write/delete app bytes:
-// the authenticated agent is the App Builder, the caller is an invited human
-// session, or the caller is the OWNER — bare token auth with no agent
-// identity claimed. Agents always claim their slug via the agent header (and
-// any non-app-builder slug is rejected above), so a header-less token caller
-// is the human driving the web UI, not an agent sidestepping the gate: the
-// header is cooperative, and an agent omitting it gains nothing it could not
-// already do with the token it holds. Without the owner lane the operator
-// UI's own edit path (submitAppEdit → POST /apps/{id}/improve) 403'd for the
-// only human in a single-owner workspace.
+// the authenticated agent is the App Builder, or the caller is an invited human
+// session. The web UI produces requestActorKindHuman via humanSessionFromRequest.
+// The broker-kind fallback lane was removed because all agents hold WUPHF_BROKER_TOKEN
+// and could omit X-WUPHF-Agent to bypass app ownership checks.
 func (b *Broker) appWriterAllowed(r *http.Request, actor string) bool {
 	if strings.EqualFold(strings.TrimSpace(actor), appBuilderSlug) {
 		return true
@@ -625,10 +620,7 @@ func (b *Broker) appWriterAllowed(r *http.Request, actor string) bool {
 	if !ok {
 		return false
 	}
-	if a.Kind == requestActorKindHuman {
-		return true
-	}
-	return a.Kind == requestActorKindBroker && strings.TrimSpace(actor) == ""
+	return a.Kind == requestActorKindHuman
 }
 
 func writeAppError(w http.ResponseWriter, err error) {
