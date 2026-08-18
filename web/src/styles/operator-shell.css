@@ -5118,13 +5118,13 @@
   padding: 1px 8px;
   white-space: nowrap;
 }
-.opr-data-row {
+.opr-dt-row {
   cursor: pointer;
 }
-.opr-data-row:hover td {
+.opr-dt-row:hover td {
   background: var(--t-tint-accent);
 }
-.opr-data-row.is-open td {
+.opr-dt-row.is-open td {
   background: var(--t-tint-2);
 }
 .opr-data-detail-row td {
@@ -5220,10 +5220,13 @@
   padding: 0;
 }
 .opr-data-sort-btn {
+  /* Sizes to its own content (name + type + caret) so it never forces the
+     column wider than the body cells — a width:100% here desynced the header
+     from the body in the auto table-layout (2026-08-18). */
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  width: 100%;
+  max-width: 100%;
   background: none;
   border: 0;
   cursor: pointer;
@@ -5231,6 +5234,7 @@
   padding: 8px 10px;
   color: inherit;
   font: inherit;
+  white-space: nowrap;
 }
 .opr-data-sort-btn:hover {
   background: var(--t-tint-accent);
@@ -5240,7 +5244,7 @@
   outline-offset: -2px;
 }
 .opr-data-sort-caret {
-  margin-left: auto;
+  margin-left: 4px;
   font-size: 9px;
   color: var(--t-faint);
 }

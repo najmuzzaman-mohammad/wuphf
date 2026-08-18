@@ -586,7 +586,7 @@ function ModelTableView({ table }: { table: ModelTable }) {
                   return (
                     <Fragment key={`row-${start + i}`}>
                       <tr
-                        className={`opr-data-row${open ? " is-open" : ""}`}
+                        className={`opr-dt-row${open ? " is-open" : ""}`}
                         onClick={() => setOpenRow(open ? null : row)}
                       >
                         {table.columns.map((c) => (
