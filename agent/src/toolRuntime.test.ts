@@ -224,14 +224,26 @@ async function* fakeBuild() {
 const APP = "app1";
 let server: ReturnType<typeof createServer>;
 let base: string;
+let priorAuthorModel: string | undefined;
 beforeAll(() => {
+	// These HTTP tests exercise the /tools/call plumbing against the SIMULATED
+	// runtime, not a live model. Pin authoring off so runtimeAICapabilityConfig
+	// does not resolve an ambient provider (a CI runner with ANTHROPIC_API_KEY
+	// would otherwise make nex.ai.* fire a real, slow network call and this test
+	// would flake on a socket timeout). Restored in afterAll.
+	priorAuthorModel = process.env.TOOL_AUTHOR_MODEL;
+	process.env.TOOL_AUTHOR_MODEL = "0";
 	const store = new AgentStore(mkdtempSync(join(tmpdir(), "wuphf-toolcall-")));
 	store.upsertTool(APP, READ_TOOL);
 	store.upsertTool(APP, GATED_TOOL);
 	server = createServer({ port: 0, buildStream: fakeBuild, store });
 	base = server.url.toString().replace(/\/$/, "");
 });
-afterAll(() => server.stop(true));
+afterAll(() => {
+	if (priorAuthorModel === undefined) delete process.env.TOOL_AUTHOR_MODEL;
+	else process.env.TOOL_AUTHOR_MODEL = priorAuthorModel;
+	server.stop(true);
+});
 
 function post(body: unknown): Promise<Response> {
 	return fetch(`${base}/tools/call`, {

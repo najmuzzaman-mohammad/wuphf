@@ -54,6 +54,23 @@ function plain(v: unknown): unknown {
 	}
 }
 
+/** Serialize a tool's FINAL return value for the operator. Unlike preview()
+ * (a 60-char label for action tracing), this preserves the whole output — an
+ * authored tool that returns a structured summary object must reach the
+ * execution log intact, not clipped to 57 chars. Bounded only to keep a
+ * pathological payload from bloating the log / postMessage. */
+function serializeResult(v: unknown): string {
+	if (typeof v === "string") return v;
+	let s: string;
+	try {
+		s = v === undefined ? "" : JSON.stringify(v);
+	} catch {
+		s = String(v);
+	}
+	const MAX = 200_000;
+	return s.length > MAX ? `${s.slice(0, MAX)}… (result truncated)` : s;
+}
+
 /** Rebuild the capability tree from dotted paths as RPC proxies to the host. */
 function buildProxyTree(capPaths: string[]): Record<string, unknown> {
 	const root: Record<string, unknown> = {};
@@ -112,7 +129,7 @@ self.onmessage = (ev: MessageEvent) => {
 				...msg.argValues,
 				...msg.shadowedGlobals.map(() => undefined),
 			);
-			postMessage({ t: "done", result: typeof value === "string" ? value : preview(value) });
+			postMessage({ t: "done", result: serializeResult(value) });
 		} catch (e) {
 			postMessage({ t: "err", detail: e instanceof Error ? e.message : String(e) });
 		}

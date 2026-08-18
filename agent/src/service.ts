@@ -16,14 +16,14 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { streamWorkflow } from "./buildAgent.js";
-import { buildCapabilities, capabilityConfigFromEnv } from "./capabilities.js";
+import { buildCapabilities, capabilityConfigFromEnv, fetchAppSchema } from "./capabilities.js";
 import { runWorkflow } from "./executor.js";
 import { providersPayload } from "./providers.js";
 import { runRoutine } from "./routineRunner.js";
 import { PiSessions } from "./sessions.js";
 import { AgentStore, defaultDataDir, sanitizeAgentId } from "./store.js";
 import { runTool } from "./toolRuntime.js";
-import { resolveToolAuthoring } from "./serviceAuthor.js";
+import { resolveToolAuthoring, runtimeAICapabilityConfig } from "./serviceAuthor.js";
 import { buildTool } from "./tools.js";
 import { type BuildRequest, type RunRequest, SCHEMA_VERSION, type ToolBuildRequest, type ToolCallRequest, type WorkflowSpec } from "./wire.js";
 
@@ -211,7 +211,10 @@ export function createServer(opts: ServerOptions = {}) {
 				const app = typeof body.app === "string" ? body.app.trim() : "";
 				if (app && !validAgentId(app)) return json({ error: "invalid tool build request: unusable app id" }, 400);
 				const authoring = resolveAuthoring();
-				const outcome = await buildTool(body.message, { ...(authoring ?? {}), tryModel: authoring != null, signal: req.signal });
+				// Steer the authored tool onto the app's REAL tables: fetch its
+				// schema so data.* calls use the names the app already wrote.
+				const buildSchema = app ? await fetchAppSchema({ ...capabilityConfigFromEnv(), appId: app }) : "";
+				const outcome = await buildTool(body.message, { ...(authoring ?? {}), tryModel: authoring != null, signal: req.signal, appSchema: buildSchema });
 				console.log(`tools/build authored_by=${outcome.authored_by} via=${authoring?.via ?? "none"} app=${app || "-"}`);
 				// `app` set -> PERSIST the authored tool under that agent (re-authoring a
 				// same-named tool bumps version); the response tool carries `version`.
@@ -279,7 +282,7 @@ export function createServer(opts: ServerOptions = {}) {
 					await runTool({ ...tool, inputs: rawInputs === undefined ? [] : rawInputs }, body.args ?? {}, {
 						approved: body.approved === true,
 						// Pass the app id so data.* binds to THIS app's real store.
-						capabilities: buildCapabilities({ ...capabilityConfigFromEnv(), appId: agent }),
+						capabilities: buildCapabilities({ ...capabilityConfigFromEnv(), ...runtimeAICapabilityConfig(), appId: agent }),
 						timeoutMs,
 					}),
 				);
@@ -322,13 +325,16 @@ export function createServer(opts: ServerOptions = {}) {
 				// Routines author through the same per-host resolution as /tools/build,
 				// so a machine with a real model authors real tools on routine fires too.
 				const routineAuthoring = resolveAuthoring();
+				// A routine that authors a tool on the fly must also target the app's
+				// real tables — fetch the schema once and pass it to the author.
+				const routineSchema = await fetchAppSchema({ ...capabilityConfigFromEnv(), appId: agent });
 				const result = await runRoutine(
 					agent,
 					{ slug: body.slug.trim(), name: body.name.trim(), prompt: body.prompt },
 					{
 						store,
 						sessions,
-						author: (p) => buildTool(p, { ...(routineAuthoring ?? {}), tryModel: routineAuthoring != null }),
+						author: (p) => buildTool(p, { ...(routineAuthoring ?? {}), tryModel: routineAuthoring != null, appSchema: routineSchema }),
 					},
 				);
 				return json({ status: result.status, digest: result.outcome, session_id: result.session.id });

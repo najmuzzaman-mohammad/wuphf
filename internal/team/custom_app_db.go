@@ -90,6 +90,71 @@ func normalizeAppDBColumns(cols []AppDBColumn) []AppDBColumn {
 	return out
 }
 
+// inferAppDBColumnType maps one JSON-decoded value to an app-db column type.
+// Numbers are float64 after a JSON round-trip; arrays are []any; everything else
+// (including ISO date strings, which are indistinguishable from text here)
+// renders and synthesizes fine as "string".
+func inferAppDBColumnType(v any) string {
+	switch v.(type) {
+	case float64, float32, int, int32, int64:
+		return "number"
+	case []any, []string:
+		return "string[]"
+	default:
+		return "string"
+	}
+}
+
+// inferAppDBColumns derives a column set from sample rows for a table an authored
+// tool upserts into WITHOUT a prior define — the "just works" path so an agent
+// can CREATE its own data (a Briefings log, a daily digest) instead of failing
+// because the schema was never declared. Column order is deterministic: "id"
+// first when present, then the remaining keys alphabetically. A column's type is
+// the type of its first non-nil value across the rows, defaulting to "string".
+func inferAppDBColumns(rows []map[string]any) []AppDBColumn {
+	inferred := map[string]string{}
+	var order []string
+	for _, row := range rows {
+		for name := range row {
+			n := strings.TrimSpace(name)
+			if n == "" {
+				continue
+			}
+			if _, seen := inferred[n]; !seen {
+				order = append(order, n)
+				inferred[n] = ""
+			}
+		}
+		for name, v := range row {
+			n := strings.TrimSpace(name)
+			if n == "" || v == nil {
+				continue
+			}
+			if inferred[n] == "" {
+				inferred[n] = inferAppDBColumnType(v)
+			}
+		}
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		if order[i] == "id" {
+			return order[j] != "id"
+		}
+		if order[j] == "id" {
+			return false
+		}
+		return order[i] < order[j]
+	})
+	cols := make([]AppDBColumn, 0, len(order))
+	for _, n := range order {
+		typ := inferred[n]
+		if typ == "" {
+			typ = "string"
+		}
+		cols = append(cols, AppDBColumn{Name: n, Type: typ})
+	}
+	return normalizeAppDBColumns(cols)
+}
+
 func validateAppDBTableName(table string) (string, error) {
 	table = strings.TrimSpace(table)
 	if table == "" {
@@ -248,9 +313,22 @@ func (s *customAppStore) UpsertAppDBRows(id, table string, rows []map[string]any
 	if err != nil {
 		return AppDBTable{}, err
 	}
+	table = resolveTableBodyName(db, table)
 	body, ok := db.Tables[table]
 	if !ok {
-		return AppDBTable{}, newCustomAppCallerError("app db: table %q is not defined", table)
+		// Auto-define from the incoming rows so an authored tool can CREATE a new
+		// table (a Briefings log, a digest) without a separate define step — the
+		// "save this" the operator described just works, instead of a 400 the
+		// agent has no capability to recover from (2026-08-18 output-quality pass).
+		if len(db.Tables) >= appDBTableLimit {
+			return AppDBTable{}, newCustomAppCallerError("app db: too many tables (max %d)", appDBTableLimit)
+		}
+		cols := inferAppDBColumns(rows)
+		if len(cols) == 0 {
+			return AppDBTable{}, newCustomAppCallerError("app db: table %q is not defined and no columns could be inferred from the rows", table)
+		}
+		body = appDBTableBody{Columns: cols, Rows: []map[string]any{}}
+		db.Tables[table] = body
 	}
 	if body.Rows == nil {
 		body.Rows = []map[string]any{}
@@ -300,6 +378,24 @@ func (s *customAppStore) UpsertAppDBRows(id, table string, rows []map[string]any
 	return tableToOut(table, body), nil
 }
 
+// resolveTableBodyName returns the stored table name matching `want`
+// case-insensitively, or `want` unchanged when no such table exists (so a
+// genuine "not defined" error still fires). The app UI and an authored tool are
+// written by different model calls that do not reliably agree on casing
+// ("Incidents" vs "incidents"), so reads/writes tolerate it (2026-08-18 loop
+// audit — a tool queried a lowercase name and silently found zero rows).
+func resolveTableBodyName(db appDB, want string) string {
+	if _, ok := db.Tables[want]; ok {
+		return want
+	}
+	for name := range db.Tables {
+		if strings.EqualFold(name, want) {
+			return name
+		}
+	}
+	return want
+}
+
 // QueryAppDBTable returns a single table by name.
 func (s *customAppStore) QueryAppDBTable(id, table string) (AppDBTable, error) {
 	if err := validateCustomAppID(id); err != nil {
@@ -318,6 +414,7 @@ func (s *customAppStore) QueryAppDBTable(id, table string) (AppDBTable, error) {
 	if err != nil {
 		return AppDBTable{}, err
 	}
+	table = resolveTableBodyName(db, table)
 	body, ok := db.Tables[table]
 	if !ok {
 		return AppDBTable{}, newCustomAppCallerError("app db: table %q is not defined", table)
@@ -343,6 +440,7 @@ func (s *customAppStore) ClearAppDBTable(id, table string) (AppDBTable, error) {
 	if err != nil {
 		return AppDBTable{}, err
 	}
+	table = resolveTableBodyName(db, table)
 	body, ok := db.Tables[table]
 	if !ok {
 		return AppDBTable{}, newCustomAppCallerError("app db: table %q is not defined", table)

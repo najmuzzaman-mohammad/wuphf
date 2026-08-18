@@ -4,7 +4,7 @@
 
 import { expect, test } from "bun:test";
 import type { Provider } from "./providers.js";
-import { resolveToolAuthoring } from "./serviceAuthor.js";
+import { resolveToolAuthoring, runtimeAICapabilityConfig } from "./serviceAuthor.js";
 
 const none: Provider[] = [
 	{ id: "anthropic", label: "Anthropic", available: false, via: "none" },
@@ -35,4 +35,24 @@ test("ANTHROPIC_API_KEY outranks the CLI; ollama is the last resort; none -> stu
 	expect(resolveToolAuthoring({}, withProviders({ anthropic: "api_key" }))?.via).toBe("api_key");
 	expect(resolveToolAuthoring({}, withProviders({ ollama: "local" }))?.via).toBe("ollama");
 	expect(resolveToolAuthoring({}, () => none)).toBeUndefined();
+});
+
+// runtimeAICapabilityConfig reuses the authoring resolver so runtime nex.ai.*
+// runs on the SAME engine that authored the tool — the fix for a subscription
+// operator whose authored tool otherwise emits "nothing actually ran" stubs.
+test("runtimeAICapabilityConfig: subscription CLI -> real model + complete fn", () => {
+	const cfg = runtimeAICapabilityConfig({}, withProviders({ anthropic: "subscription_cli" }));
+	expect(cfg.aiModel?.provider).toBe("anthropic");
+	expect(typeof cfg.complete).toBe("function");
+});
+
+test("runtimeAICapabilityConfig: nothing available -> {} (nex.ai.* stays simulated)", () => {
+	const cfg = runtimeAICapabilityConfig({}, () => none);
+	expect(cfg.aiModel).toBeUndefined();
+	expect(cfg.complete).toBeUndefined();
+});
+
+test("runtimeAICapabilityConfig: TOOL_AUTHOR_MODEL=1 resolves the core model", () => {
+	const cfg = runtimeAICapabilityConfig({ TOOL_AUTHOR_MODEL: "1" }, withProviders({}));
+	expect(cfg.aiModel).toBeDefined();
 });

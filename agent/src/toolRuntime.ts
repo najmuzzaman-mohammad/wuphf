@@ -46,7 +46,16 @@ export type ToolRunResult =
 	| { status: "needs_approval"; gate: ToolCallGate; actions: string[] }
 	| { status: "error"; detail: string; actions: string[] };
 
-const DEFAULT_TIMEOUT_MS = 5000;
+// Outer hard-kill for a whole tool run. It must exceed the time a tool spends
+// AWAITING its capabilities, not just its CPU work: a tool that calls nex.ai.*
+// (each capability call independently bounded at DEFAULT_CAP_TIMEOUT_MS = 60s)
+// can legitimately spend tens of seconds waiting on a real model. The old 5s
+// default silently killed every AI-using tool at 5s the moment runtime nex.ai.*
+// became real (2026-08-18) — it was only ever survivable while nex.ai.* was the
+// instant simulation. 120s covers a couple of sequential real model calls; hosts
+// running heavier tools raise it via TOOL_CALL_TIMEOUT_MS. The runaway-sync-loop
+// guard still fires — just at 120s on an isolated worker thread, not 5s.
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 // Capabilities that mutate the outside world (or seize the operator's browser)
 // halt for the approval card unless the run is approved. The allow-list lives

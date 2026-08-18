@@ -97,6 +97,23 @@ function preview(v: unknown): string {
 	return s.length > 60 ? `${s.slice(0, 57)}…` : s;
 }
 
+/** Serialize a value as MODEL INPUT — the full content up to `max` chars, not
+ * the 60-char label preview() produces. preview() is for action tracing; feeding
+ * it to nex.ai.* was the reason summaries read "your data got cut off" — the
+ * model only ever saw the first 57 characters of its own input. */
+function modelInput(v: unknown, max = 6000): string {
+	let s: string;
+	if (typeof v === "string") s = v;
+	else {
+		try {
+			s = v === undefined ? "" : JSON.stringify(v, null, 1);
+		} catch {
+			s = String(v);
+		}
+	}
+	return s.length > max ? `${s.slice(0, max)}… (input truncated)` : s;
+}
+
 /** Deterministic hash of the subject -> 55..95 (a plausible fit score). */
 function hashScore(subject: unknown): number {
 	const s = typeof subject === "string" ? subject : preview(subject);
@@ -139,6 +156,12 @@ export function simulatedCapabilities(): CapabilityTree {
 			run: (input: unknown) => simRun(input),
 			send: (target: unknown) => `Sent to ${labelOf(target)} (simulated).`,
 			browser: (goal: unknown) => `Would drive the browser: ${labelOf(goal)} (browser engine not configured).`,
+			// The reference "now" as an ISO string. Capabilities execute HOST-side
+			// (in the sidecar, which has a reliable clock) — only the sandboxed
+			// worker's own Date.now() is unreliable. So a tool that needs the current
+			// time (SLA windows, "days since") calls `await nex.now()` instead of
+			// Date.now(); this is the ONE trustworthy clock inside a tool.
+			now: () => new Date().toISOString(),
 		},
 		// Domain-neutral store surface: an authored tool reads and writes the
 		// app's OWN records, whatever the domain (deals, tickets, candidates,
@@ -192,7 +215,7 @@ function realAI(cfg: CapabilityConfig): CapabilityTree {
 				const out = await aiComplete(
 					cfg,
 					"You score business subjects 0-100. Output ONLY an integer, nothing else.",
-					`Rubric: ${rubric}\nSubject: ${preview(subject)}\nScore 0-100:`,
+					`Rubric: ${rubric}\nSubject: ${modelInput(subject, 4000)}\nScore 0-100:`,
 				);
 				const n = Number.parseInt(out.replace(/[^0-9]/g, " ").trim().split(/\s+/)[0] ?? "", 10);
 				if (Number.isNaN(n)) throw new Error("non-numeric score");
@@ -207,7 +230,7 @@ function realAI(cfg: CapabilityConfig): CapabilityTree {
 				return await aiComplete(
 					cfg,
 					`You summarize data for a busy operator. Style: ${style}. Output the summary text only.`,
-					preview(items).slice(0, 4000),
+					modelInput(items),
 				);
 			} catch {
 				return simSummarize(items);
@@ -219,7 +242,7 @@ function realAI(cfg: CapabilityConfig): CapabilityTree {
 				return await aiComplete(
 					cfg,
 					`You write a ${labelOf(kind)} for a busy operator. Tone: ${labelOf(o.tone ?? "warm, brief")}. Output the text only.`,
-					`Context: ${preview(o.context ?? "none")}`,
+					`Context: ${modelInput(o.context ?? "none")}`,
 				);
 			} catch {
 				return `Drafted ${labelOf(kind)} — warm, brief, ready to review (simulated).`;
@@ -338,6 +361,35 @@ function realData(cfg: CapabilityConfig): CapabilityTree {
 			return `Saved to ${String(collection)}.`;
 		},
 	};
+}
+
+// fetchAppSchema GETs the app's real table schema (names + columns) from the
+// broker so the tool author can steer an authored tool onto the SAME tables the
+// app already uses. Returns a compact one-line-per-table string, or "" when
+// there is no broker/app or the app has no tables yet. Best-effort: never throws.
+export async function fetchAppSchema(cfg: CapabilityConfig): Promise<string> {
+	if (!cfg.brokerUrl || !cfg.brokerToken || !cfg.appId) return "";
+	const base = cfg.brokerUrl.replace(/\/$/, "");
+	const fetchFn = cfg.fetch ?? fetch;
+	try {
+		const res = await fetchFn(`${base}/apps/${encodeURIComponent(cfg.appId)}/db`, {
+			headers: { authorization: `Bearer ${cfg.brokerToken}` },
+		});
+		if (!res.ok) return "";
+		const body = (await res.json()) as { tables?: { name?: string; columns?: { name?: string }[] }[] };
+		const tables = Array.isArray(body.tables) ? body.tables : [];
+		const lines = tables
+			// Meta is app-owned control state (the derive marker), not a data table
+			// a tool should read — leave it out of the author's schema view.
+			.filter((t) => (t.name ?? "").trim() && (t.name ?? "").toLowerCase() !== "meta")
+			.map((t) => {
+				const cols = Array.isArray(t.columns) ? t.columns.map((c) => (c.name ?? "").trim()).filter(Boolean) : [];
+				return `- ${t.name}(${cols.join(", ")})`;
+			});
+		return lines.join("\n");
+	} catch {
+		return "";
+	}
 }
 
 function realBrowser(cfg: CapabilityConfig): CapabilityFn {

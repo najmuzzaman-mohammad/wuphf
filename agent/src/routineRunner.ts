@@ -16,6 +16,7 @@
 // as an "md" artifact (<kebab-name>-run-<n>.md).
 
 import { buildCapabilities, capabilityConfigFromEnv } from "./capabilities.js";
+import { runtimeAICapabilityConfig } from "./serviceAuthor.js";
 import type { PiSessions } from "./sessions.js";
 import type { AgentStore } from "./store.js";
 import { type CapabilityTree, runTool, type ToolRunResult } from "./toolRuntime.js";
@@ -111,7 +112,7 @@ export async function runRoutine(agent: string, routine: RoutineRunRequest, deps
 	if (tool) {
 		const execute = deps.execute ?? runTool;
 		// Pass the app id so a fired routine's tool reads/writes THIS app's store.
-		const capabilities = deps.capabilities ?? buildCapabilities({ ...capabilityConfigFromEnv(), appId: agent });
+		const capabilities = deps.capabilities ?? buildCapabilities({ ...capabilityConfigFromEnv(), ...runtimeAICapabilityConfig(), appId: agent });
 		const timeoutMs = Number(process.env.TOOL_CALL_TIMEOUT_MS) || undefined;
 		// Give the tool the routine's prompt as `input`. A synthesized fallback tool
 		// takes a single `input` param (tools.ts authorTool) — without this it ran on

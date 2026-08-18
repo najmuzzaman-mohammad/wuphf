@@ -211,6 +211,7 @@ The code runs against these capabilities (use them; do NOT invent others — a c
 - data.list(collection, { filter, since }) -> array of the app's OWN records (whatever the app persists: deals, tickets, candidates, products). Returns [] when nothing is stored yet.
 - data.get(collection, id) -> one record by id, or null if absent
 - data.upsert(collection, record) -> saves a record to the app's store (confirmation string)
+- nex.now() -> the current time as an ISO string (the ONE reliable clock — use this for "now", SLA windows, "hours since", never Date.now())
 - nex.ai.score(subject, { rubric }) -> number 0-100
 - nex.ai.summarize(items, { style }) -> string
 - nex.ai.write(kind, { context, tone }) -> string
@@ -223,7 +224,7 @@ The tool operates on the app's OWN records via data.*: read what the app persist
 
 Runtime facts your code must respect:
 - Every input parameter arrives as a STRING (the chat binds arguments as text). Parse numbers with Number(...) and guard NaN; JSON.parse only when the operator is told to paste JSON.
-- There is no reliable wall clock in the sandbox — compute "days since" from fields the data provides, never from Date.now().
+- Date.now() inside the tool body is unreliable — get the current time from await nex.now() (an ISO string) and compute "hours/days since" from the record's own timestamp fields against that.
 - nex.ai.* return plain strings/numbers; do not JSON.parse them.
 - data.list returns records whose fields are whatever the app stored; read fields defensively (a field may be absent) and never assume a fixed schema.
 
@@ -248,6 +249,19 @@ export interface ToolAuthorOptions {
 	timeoutMs?: number;
 	/** Override the pi-ai completion call in tests so they never hit a live model. */
 	complete?: typeof complete;
+	/** A compact description of the app's EXISTING data tables (name + columns),
+	 * injected into the prompt so an authored tool reads/writes the SAME tables
+	 * the app already uses via data.* instead of inventing its own names (which
+	 * left the tool operating on a phantom, empty store — 2026-08-18 loop audit). */
+	appSchema?: string;
+}
+
+/** Build the "your app's tables" block for the prompt from a fetched schema
+ * string, or "" when there is none (a fresh app with no tables yet). */
+function appSchemaBlock(schema: string | undefined): string {
+	const s = (schema ?? "").trim();
+	if (!s) return "";
+	return `\n\nTHIS APP ALREADY HAS THESE TABLES — use these EXACT table and column names in every data.* call; do NOT invent new table names:\n${s}\nA tool that queries a table this app does not have will read an empty store and produce nothing useful.`;
 }
 
 /** Coerce model-emitted inputs — strings or {name} objects — into ToolInputs;
@@ -285,7 +299,7 @@ export async function authorToolWithModel(message: string, opts: ToolAuthorOptio
 	const completeFn = opts.complete ?? complete;
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_AUTHOR_TIMEOUT_MS;
 	const ctx: Context = {
-		systemPrompt: TOOL_SCHEMA_PROMPT,
+		systemPrompt: TOOL_SCHEMA_PROMPT + appSchemaBlock(opts.appSchema),
 		messages: [{ role: "user", content: message.trim(), timestamp: Date.now() }],
 	};
 

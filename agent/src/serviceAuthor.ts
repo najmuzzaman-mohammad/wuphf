@@ -19,7 +19,7 @@
 // never eats a model timeout — the original reason authoring was opt-in.
 
 import { getModel, type Model } from "@mariozechner/pi-ai";
-import { ollamaModel } from "./model.js";
+import { ollamaModel, resolveModel } from "./model.js";
 import { detectProviders } from "./providers.js";
 import type { ToolAuthorOptions } from "./tools.js";
 
@@ -125,4 +125,27 @@ export function resolveToolAuthoring(
 		return { via: "ollama", model: ollamaModel() };
 	}
 	return undefined;
+}
+
+
+/**
+ * Resolve the engine for RUNTIME `nex.ai.*` capabilities (summarize/score/write
+ * executed inside an authored tool), reusing the SAME resolver that authored the
+ * tool. Without this, a subscription-login operator (`claude` CLI on PATH, no env
+ * key) authors a real tool that then emits the "nothing actually ran" stub at
+ * execution, because the old runtime gate (TOOL_RUNTIME_MODEL=1 -> Ollama only)
+ * never sees the subscription path. Returns {} when no engine is available, so
+ * nex.ai.* stays honestly simulated rather than throwing.
+ */
+export function runtimeAICapabilityConfig(
+	env: Record<string, string | undefined> = process.env,
+	providers = detectProviders,
+): { aiModel?: Model<string>; complete?: ToolAuthorOptions["complete"] } {
+	const resolved = resolveToolAuthoring(env, providers);
+	if (!resolved) return {};
+	// env_override (TOOL_AUTHOR_MODEL=1) carries no model; resolve the core
+	// Ollama/HARNESS_PROVIDER model the same way authorToolWithModel would.
+	const aiModel = resolved.model ?? (resolved.via === "env_override" ? resolveModel() : undefined);
+	if (!aiModel) return {};
+	return { aiModel, complete: resolved.complete };
 }

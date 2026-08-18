@@ -271,6 +271,15 @@ func (b *Broker) handleAppDB(w http.ResponseWriter, r *http.Request, id string) 
 			writeAppError(w, opErr)
 			return
 		}
+		// Data changed -> drop the stale wiki cache so the Knowledge tab
+		// re-synthesizes against the new rows on next view (2026-08-18
+		// output-quality pass). Best-effort: a failed invalidate must not fail
+		// the write the operator just made.
+		if op == "define" || op == "upsert" || op == "clear" {
+			if invErr := store.InvalidateAppKnowledge(id); invErr != nil {
+				fmt.Fprintf(os.Stderr, "broker: app knowledge invalidate failed: %v\n", invErr)
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"table": table})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

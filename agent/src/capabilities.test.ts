@@ -117,6 +117,21 @@ test("real nex.ai.summarize returns the model's text", async () => {
 	expect(await cap(tree, "nex.ai.summarize")([1, 2, 3])).toBe("6 deals moved; Globex leads.");
 });
 
+test("nex.ai.summarize feeds the FULL input to the model, not a 57-char preview", async () => {
+	let captured = "";
+	const capturing = (async (_m: unknown, ctx: { messages: { content: unknown }[] }) => {
+		captured = String(ctx.messages?.[0]?.content ?? "");
+		return { content: [{ type: "text", text: "ok" }] };
+	}) as unknown as CompleteFn;
+	// Meaningful content sits well past char 57; preview() used to cut everything
+	// after ~57 chars, so the model saw its own input "cut off" and refused.
+	const items = Array.from({ length: 12 }, (_, i) => `incident-${i}: Falcon Logistics outage breached SLA`);
+	const tree = buildCapabilities({ aiModel: MODEL, complete: capturing });
+	await cap(tree, "nex.ai.summarize")(items);
+	expect(captured.length).toBeGreaterThan(200);
+	expect(captured).toContain("incident-11");
+});
+
 // --- real integrations.call (stubbed broker) ------------------------------------
 
 const BROKER: CapabilityConfig = { brokerUrl: "http://broker.test", brokerToken: "tok" };
