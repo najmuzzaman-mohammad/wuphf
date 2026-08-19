@@ -228,6 +228,14 @@ func resolveOpenAICompatAPIKey(kind string) string {
 	if v := strings.TrimSpace(os.Getenv("WUPHF_" + envKind + "_API_KEY")); v != "" {
 		return v
 	}
+	if kind == KindAtlasCloud {
+		if v := strings.TrimSpace(os.Getenv("ATLASCLOUD_API_KEY")); v != "" {
+			return v
+		}
+		if v := strings.TrimSpace(os.Getenv("ATLAS_CLOUD_API_KEY")); v != "" {
+			return v
+		}
+	}
 	if kind == KindHermesAgent {
 		if v := strings.TrimSpace(os.Getenv("API_SERVER_KEY")); v != "" {
 			return v

@@ -53,6 +53,16 @@ type localProviderSpec struct {
 
 var localProviderSpecs = []localProviderSpec{
 	{
+		kind:       provider.KindAtlasCloud,
+		binaryName: "",
+		platformAllowed: func(_, _ string) bool {
+			return true
+		},
+		notes: []string{
+			"Set ATLASCLOUD_API_KEY or WUPHF_ATLASCLOUD_API_KEY before starting WUPHF. Remote Atlas Cloud endpoints are not probed from the broker; status reflects whether an API key is configured.",
+		},
+	},
+	{
 		kind:        provider.KindMLXLM,
 		binaryName:  "mlx_lm.server",
 		versionArgs: []string{"--version"},
@@ -221,7 +231,12 @@ func computeOneStatus(ctx context.Context, spec localProviderSpec, ov localProvi
 	st.Endpoint = endpoint
 	st.Model = model
 
-	if path, err := ov.lookPath(spec.binaryName); err == nil {
+	if spec.binaryName == "" {
+		if provider.OpenAICompatAPIKey(spec.kind) != "" {
+			st.BinaryInstalled = true
+			st.BinaryVersion = "API key configured"
+		}
+	} else if path, err := ov.lookPath(spec.binaryName); err == nil {
 		st.BinaryInstalled = true
 		st.BinaryPath = path
 		// Best-effort version capture; failures are silent — we already
@@ -250,6 +265,13 @@ func computeOneStatus(ctx context.Context, spec localProviderSpec, ov localProvi
 		st.Reachable = reachable
 		st.LoadedModel = loadedModel
 		st.Probed = true
+	case spec.binaryName == "" && endpoint != "":
+		st.Reachable = st.BinaryInstalled
+		if st.BinaryInstalled {
+			st.ProbeSkippedNote = "Remote endpoint is not probed; API key is configured."
+		} else {
+			st.ProbeSkippedNote = "Remote endpoint is not probed; set the API key before using this runtime."
+		}
 	case endpoint != "":
 		st.Probed = false
 		st.ProbeSkippedNote = "Reachability probe is loopback-only; configured endpoint is non-local."

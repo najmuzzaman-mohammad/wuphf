@@ -17,13 +17,14 @@ const (
 	// foreign bot that acts in Slack and whose registered bot user id is the
 	// inbound routing key (see internal/team/broker_slack_agents.go).
 	KindSlack = "slack"
-	// Local OpenAI-compatible HTTP runtimes. These expose the same
+	// OpenAI-compatible HTTP runtimes. These expose the same
 	// /v1/chat/completions API; only their default base URL and model differ.
 	// Configure per-kind overrides via Config.ProviderEndpoints or
 	// WUPHF_<KIND>_BASE_URL / WUPHF_<KIND>_MODEL.
-	KindMLXLM  = "mlx-lm"
-	KindOllama = "ollama"
-	KindExo    = "exo"
+	KindAtlasCloud = "atlascloud"
+	KindMLXLM      = "mlx-lm"
+	KindOllama     = "ollama"
+	KindExo        = "exo"
 )
 
 // ProviderBinding is the per-agent runtime selection persisted on an office
@@ -74,11 +75,11 @@ func ValidateKind(s string) error {
 	switch s {
 	case "",
 		KindClaudeCode, KindCodex, KindOpencode, KindOpenclaw, KindOpenclawHTTP, KindHermesAgent,
-		KindSlack, KindMLXLM, KindOllama, KindExo:
+		KindSlack, KindAtlasCloud, KindMLXLM, KindOllama, KindExo:
 		return nil
 	default:
-		return fmt.Errorf("unknown provider kind %q (valid: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, or empty)",
-			s, KindClaudeCode, KindCodex, KindOpencode, KindOpenclaw, KindOpenclawHTTP, KindHermesAgent, KindSlack, KindMLXLM, KindOllama, KindExo)
+		return fmt.Errorf("unknown provider kind %q (valid: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, or empty)",
+			s, KindClaudeCode, KindCodex, KindOpencode, KindOpenclaw, KindOpenclawHTTP, KindHermesAgent, KindSlack, KindAtlasCloud, KindMLXLM, KindOllama, KindExo)
 	}
 }
 

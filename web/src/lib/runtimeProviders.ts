@@ -36,6 +36,12 @@ export const RUNTIME_PROVIDER_OPTIONS: readonly RuntimeProviderOption[] = [
     binary: "opencode",
   },
   {
+    id: "atlascloud",
+    label: "Atlas Cloud",
+    desc: "Hosted OpenAI-compatible model routing",
+    kind: "local",
+  },
+  {
     id: "mlx-lm",
     label: "MLX-LM",
     desc: "Apple Silicon local OpenAI-compatible runtime",

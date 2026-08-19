@@ -19,6 +19,7 @@ import {
   isCatalogModel,
   modelOptionsForKind,
 } from "../../lib/modelCatalog";
+import { DEFAULT_LLM_KINDS } from "../../lib/providerBinding";
 
 // "inherit" is the wizard-only sentinel that maps to an absent ProviderBinding
 // in the POST body (the broker then falls back to the install-wide default at
@@ -55,6 +56,7 @@ const INITIAL_FORM: AgentFormData = {
 // they just fall back to the raw kind string.
 const PROVIDER_LABELS: Record<LLMRuntimeKind, string> = {
   "claude-code": "Claude Code",
+  atlascloud: "Atlas Cloud",
   codex: "Codex",
   opencode: "Opencode",
   "mlx-lm": "MLX-LM",
@@ -194,14 +196,8 @@ export function AgentWizard({ open, onClose, onCreated }: AgentWizardProps) {
     staleTime: 30_000,
   });
   const localStatuses: LocalProviderStatus[] = localStatusQuery.data ?? [];
-  const llmKinds: LLMRuntimeKind[] = (configQuery.data?.llm_provider_kinds ?? [
-    "claude-code",
-    "codex",
-    "opencode",
-    "mlx-lm",
-    "ollama",
-    "exo",
-  ]) as LLMRuntimeKind[];
+  const llmKinds: LLMRuntimeKind[] = (configQuery.data?.llm_provider_kinds ??
+    DEFAULT_LLM_KINDS) as LLMRuntimeKind[];
 
   async function handleGenerate() {
     const trimmed = prompt.trim();

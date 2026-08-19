@@ -923,6 +923,36 @@ func TestOpenAICompatStreamFn_OpenclawHTTPUsesGatewayToken(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatStreamFn_AtlasCloudUsesEnvAliasAndDefaults(t *testing.T) {
+	var gotAuth string
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		buf, _ := io.ReadAll(r.Body)
+		gotBody = string(buf)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	t.Setenv("WUPHF_ATLASCLOUD_BASE_URL", srv.URL+"/v1")
+	t.Setenv("WUPHF_ATLASCLOUD_MODEL", "")
+	t.Setenv("WUPHF_ATLASCLOUD_API_KEY", "")
+	t.Setenv("ATLASCLOUD_API_KEY", "atlas-test-key")
+	t.Setenv("ATLAS_CLOUD_API_KEY", "")
+
+	factory := NewOpenAICompatStreamFn(KindAtlasCloud, "http://unused", defaultAtlasCloudModel)
+	for range factory("agent-one")([]agent.Message{{Role: "user", Content: "ping"}}, nil) {
+	}
+
+	if gotAuth != "Bearer atlas-test-key" {
+		t.Fatalf("Authorization = %q, want Atlas Cloud bearer key", gotAuth)
+	}
+	if !strings.Contains(gotBody, `"model":"`+defaultAtlasCloudModel+`"`) {
+		t.Fatalf("request model = %s, want %s", gotBody, defaultAtlasCloudModel)
+	}
+}
+
 // TestParseOpenAISSEStream_TrailingUsageFrame covers the canonical pattern
 // from `stream_options.include_usage`: a final SSE frame with empty choices
 // and a populated `usage` block. It must produce exactly one trailing

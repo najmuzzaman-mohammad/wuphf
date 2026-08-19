@@ -30,6 +30,10 @@ const CLOUD_MODELS: Record<
   Exclude<LLMRuntimeKind, "mlx-lm" | "ollama" | "exo">,
   string[]
 > = {
+  atlascloud: [
+    "qwen/qwen3.5-flash",
+    "deepseek-ai/deepseek-v4-pro",
+  ],
   "claude-code": [
     // Current / recommended
     "claude-opus-4-8",

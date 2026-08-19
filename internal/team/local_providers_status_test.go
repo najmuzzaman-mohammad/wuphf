@@ -52,15 +52,16 @@ func TestComputeLocalProviderStatuses_AllInstalledAndReachable(t *testing.T) {
 		goos:   "darwin",
 		goarch: "arm64",
 	}
+	t.Setenv("ATLASCLOUD_API_KEY", "atlas-test-key")
 	got := computeLocalProviderStatuses(context.Background(), ov)
-	if len(got) != 5 {
-		t.Fatalf("expected 5 statuses, got %d", len(got))
+	if len(got) != 6 {
+		t.Fatalf("expected 6 statuses, got %d", len(got))
 	}
 	gotByKind := map[string]LocalProviderStatus{}
 	for _, s := range got {
 		gotByKind[s.Kind] = s
 	}
-	for _, k := range []string{provider.KindMLXLM, provider.KindOllama, provider.KindExo, provider.KindHermesAgent, provider.KindOpenclawHTTP} {
+	for _, k := range []string{provider.KindAtlasCloud, provider.KindMLXLM, provider.KindOllama, provider.KindExo, provider.KindHermesAgent, provider.KindOpenclawHTTP} {
 		s, ok := gotByKind[k]
 		if !ok {
 			t.Fatalf("missing kind %q", k)
@@ -77,7 +78,7 @@ func TestComputeLocalProviderStatuses_AllInstalledAndReachable(t *testing.T) {
 		if s.BinaryVersion == "" {
 			t.Errorf("%s: BinaryVersion empty, version probe should have populated it", k)
 		}
-		if !strings.HasPrefix(s.LoadedModel, "fake-loaded-model:") {
+		if k != provider.KindAtlasCloud && !strings.HasPrefix(s.LoadedModel, "fake-loaded-model:") {
 			t.Errorf("%s: LoadedModel = %q, want fake prefix", k, s.LoadedModel)
 		}
 	}
@@ -100,8 +101,11 @@ func TestComputeLocalProviderStatuses_NoneInstalled(t *testing.T) {
 		if s.BinaryInstalled {
 			t.Errorf("%s: BinaryInstalled = true on a fresh box", s.Kind)
 		}
-		if len(s.Install) == 0 {
+		if s.Kind != provider.KindAtlasCloud && len(s.Install) == 0 {
 			t.Errorf("%s: Install map empty — UI has nothing to show", s.Kind)
+		}
+		if s.Kind == provider.KindAtlasCloud && len(s.Notes) == 0 {
+			t.Errorf("atlascloud: Notes empty — UI has no API key setup hint")
 		}
 		if s.Endpoint == "" {
 			t.Errorf("%s: Endpoint empty — UI can't render the URL", s.Kind)
@@ -127,7 +131,7 @@ func TestComputeLocalProviderStatuses_LinuxHidesMLXButShowsOthers(t *testing.T) 
 			if s.PlatformSupported {
 				t.Errorf("mlx-lm: PlatformSupported = true on linux")
 			}
-		case provider.KindOllama, provider.KindExo, provider.KindHermesAgent, provider.KindOpenclawHTTP:
+		case provider.KindAtlasCloud, provider.KindOllama, provider.KindExo, provider.KindHermesAgent, provider.KindOpenclawHTTP:
 			if !s.PlatformSupported {
 				t.Errorf("%s: PlatformSupported = false on linux", s.Kind)
 			}
@@ -157,7 +161,7 @@ func TestComputeLocalProviderStatuses_IntelMacRejectsMLXLM(t *testing.T) {
 			if s.PlatformSupported {
 				t.Errorf("mlx-lm: PlatformSupported = true on darwin/amd64 (Intel Mac); MLX requires Apple Silicon")
 			}
-		case provider.KindOllama, provider.KindExo, provider.KindHermesAgent, provider.KindOpenclawHTTP:
+		case provider.KindAtlasCloud, provider.KindOllama, provider.KindExo, provider.KindHermesAgent, provider.KindOpenclawHTTP:
 			// Ollama/Exo/Hermes/OpenClaw Gateway work on both arm64 and amd64
 			// Intel Macs should still see those as supported.
 			if !s.PlatformSupported {
@@ -179,6 +183,12 @@ func TestComputeLocalProviderStatuses_WindowsAddsWSL2Note(t *testing.T) {
 	}
 	got := computeLocalProviderStatuses(context.Background(), ov)
 	for _, s := range got {
+		if s.Kind == provider.KindAtlasCloud {
+			if !s.PlatformSupported {
+				t.Errorf("atlascloud: PlatformSupported = false on windows; cloud runtime should remain OS-independent")
+			}
+			continue
+		}
 		if s.PlatformSupported {
 			t.Errorf("%s: PlatformSupported = true on windows; WSL2 path expected", s.Kind)
 		}
